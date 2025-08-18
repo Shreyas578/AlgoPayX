@@ -15,6 +15,7 @@ import {
   TrendingDown
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { useAlgorand } from '../context/AlgorandContext';
 import { Navigation } from './Navigation';
 
 interface DashboardProps {
@@ -23,9 +24,10 @@ interface DashboardProps {
 
 export function Dashboard({ onNavigate }: DashboardProps) {
   const { user, balance } = useApp();
+  const { isConnected, activeAccount, balance: algoBalance, accountInfo } = useAlgorand();
   const [showBalance, setShowBalance] = React.useState(true);
 
-  const totalNetWorth = balance.bank + balance.algo + balance.usdc + balance.stocks;
+  const totalNetWorth = balance.bank + (isConnected ? algoBalance : balance.algo) + balance.usdc + balance.stocks;
 
   const features = [
     { icon: CreditCard, label: 'Payments', page: 'payments', color: 'from-blue-500 to-blue-600' },
@@ -44,9 +46,12 @@ export function Dashboard({ onNavigate }: DashboardProps) {
         {/* Welcome Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-white mb-2">
-            Welcome back{user.email ? `, ${user.email.split('@')[0]}` : ''}!
+            Welcome back{user.email ? `, ${user.email.split('@')[0]}` : 
+                        isConnected && activeAccount ? `, ${activeAccount.address.slice(0, 8)}...` : ''}!
           </h1>
-          <p className="text-gray-400">Manage your finances across all platforms</p>
+          <p className="text-gray-400">
+            {isConnected ? 'Manage your finances on Algorand blockchain' : 'Manage your finances across all platforms'}
+          </p>
         </div>
 
         {/* Net Worth Card */}
@@ -95,11 +100,18 @@ export function Dashboard({ onNavigate }: DashboardProps) {
           <div className="bg-white/5 backdrop-blur-lg p-6 rounded-xl border border-white/10">
             <div className="flex items-center justify-between mb-3">
               <Wallet className="w-6 h-6 text-green-400" />
-              <span className="text-xs text-gray-400 uppercase tracking-wide">ALGO</span>
+              <span className="text-green-400 font-medium">
+                ALGO {isConnected && <span className="text-xs">(Live)</span>}
+              </span>
             </div>
             <div className="text-2xl font-bold text-white">
-              {showBalance ? `$${balance.algo.toLocaleString()}` : '••••••'}
+              {showBalance ? `${isConnected ? algoBalance.toFixed(4) : balance.algo.toLocaleString()} ALGO` : '••••••'}
             </div>
+            {isConnected && accountInfo && (
+              <div className="text-green-400 text-sm">
+                Min Balance: {accountInfo.minBalance.toFixed(4)} ALGO
+              </div>
+            )}
           </div>
 
           <div className="bg-white/5 backdrop-blur-lg p-6 rounded-xl border border-white/10">

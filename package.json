@@ -10,6 +10,14 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@algorandfoundation/algokit-utils": "^9.1.2",
+    "@perawallet/connect": "^1.4.2",
+    "@randlabs/myalgo-connect": "^1.4.2",
+    "@walletconnect/core": "^2.21.8",
+    "@walletconnect/types": "^2.21.8",
+    "@walletconnect/utils": "^2.21.8",
+    "@walletconnect/web3wallet": "^1.16.1",
+    "algosdk": "^3.4.0",
     "lucide-react": "^0.344.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"

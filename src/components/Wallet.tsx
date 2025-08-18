@@ -16,6 +16,7 @@ import {
   Smartphone
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { useAlgorand } from '../context/AlgorandContext';
 import { Navigation } from './Navigation';
 
 interface WalletProps {
@@ -24,6 +25,7 @@ interface WalletProps {
 
 export function Wallet({ onNavigate }: WalletProps) {
   const { user, balance, setUser, showToast } = useApp();
+  const { isConnected, activeAccount, accountInfo, balance: algoBalance, assets, disconnect } = useAlgorand();
   const [showPrivateKey, setShowPrivateKey] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
 
@@ -55,7 +57,10 @@ export function Wallet({ onNavigate }: WalletProps) {
   };
 
   const handleLogout = () => {
-    setUser({ connected: false, premium: false });
+    if (isConnected) {
+      disconnect();
+    }
+    setUser({ connected: false, premium: false, hasPassword: false });
     showToast('Logged out successfully', 'info');
     onNavigate('home');
   };
@@ -63,7 +68,7 @@ export function Wallet({ onNavigate }: WalletProps) {
   const renderOverview = () => (
     <div className="space-y-6">
       {/* Wallet Address */}
-      {user.walletAddress && (
+      {(user.walletAddress || (isConnected && activeAccount)) && (
         <div className="bg-white/5 backdrop-blur-lg p-6 rounded-2xl border border-white/10">
           <h3 className="text-lg font-semibold text-white mb-4">Wallet Address</h3>
           <div className="flex items-center justify-between p-4 bg-white/5 rounded-lg">
@@ -72,8 +77,12 @@ export function Wallet({ onNavigate }: WalletProps) {
                 <WalletIcon className="w-5 h-5 text-white" />
               </div>
               <div>
-                <div className="text-white font-medium">Algorand Wallet</div>
-                <div className="text-gray-400 text-sm font-mono">{user.walletAddress}</div>
+                <div className="text-white font-medium">
+                  Algorand Wallet {isConnected && <span className="text-green-400 text-xs">(Connected)</span>}
+                </div>
+                <div className="text-gray-400 text-sm font-mono">
+                  {isConnected && activeAccount ? activeAccount.address : user.walletAddress}
+                </div>
               </div>
             </div>
             <div className="flex space-x-2">
@@ -109,8 +118,12 @@ export function Wallet({ onNavigate }: WalletProps) {
               <span className="text-gray-300">ALGO Balance</span>
               <WalletIcon className="w-5 h-5 text-green-400" />
             </div>
-            <div className="text-2xl font-bold text-white">${balance.algo.toLocaleString()}</div>
-            <div className="text-gray-400 text-sm">Algorand Blockchain</div>
+            <div className="text-2xl font-bold text-white">
+              {isConnected ? `${algoBalance.toFixed(4)} ALGO` : `$${balance.algo.toLocaleString()}`}
+            </div>
+            <div className="text-gray-400 text-sm">
+              {isConnected ? 'Live Balance' : 'Algorand Blockchain'}
+            </div>
           </div>
           
           <div className="p-4 bg-white/5 rounded-lg">
@@ -132,6 +145,29 @@ export function Wallet({ onNavigate }: WalletProps) {
           </div>
         </div>
       </div>
+
+      {/* Algorand Assets */}
+      {isConnected && assets && assets.length > 0 && (
+        <div className="bg-white/5 backdrop-blur-lg p-6 rounded-2xl border border-white/10">
+          <h3 className="text-lg font-semibold text-white mb-4">Algorand Standard Assets (ASAs)</h3>
+          <div className="space-y-3">
+            {assets.slice(0, 5).map((asset, index) => (
+              <div key={index} className="flex items-center justify-between p-4 bg-white/5 rounded-lg">
+                <div className="flex items-center space-x-3">
+                  <div className="w-8 h-8 bg-gradient-to-r from-teal-500 to-blue-500 rounded-full flex items-center justify-center">
+                    <span className="text-white font-bold text-xs">A</span>
+                  </div>
+                  <div>
+                    <div className="text-white font-medium">Asset #{asset['asset-id']}</div>
+                    <div className="text-gray-400 text-sm">Amount: {asset.amount}</div>
+                  </div>
+                </div>
+                <span className="text-green-400 text-sm">Opted In</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Connected Accounts */}
       <div className="bg-white/5 backdrop-blur-lg p-6 rounded-2xl border border-white/10">
@@ -234,7 +270,7 @@ export function Wallet({ onNavigate }: WalletProps) {
         </div>
       </div>
 
-      {user.walletAddress && (
+      {(user.walletAddress || (isConnected && activeAccount)) && (
         <div className="bg-white/5 backdrop-blur-lg p-6 rounded-2xl border border-white/10">
           <h3 className="text-lg font-semibold text-white mb-4">Private Key</h3>
           <div className="p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg mb-4">
@@ -250,7 +286,10 @@ export function Wallet({ onNavigate }: WalletProps) {
             <div className="flex items-center space-x-3">
               <Key className="w-5 h-5 text-gray-400" />
               <span className="text-white font-mono">
-                {showPrivateKey ? 'ed25519:5KQw...R7X9' : '••••••••••••••••••••••••••••••••'}
+                {showPrivateKey ? 
+                  (isConnected ? 'Managed by wallet app' : 'ed25519:5KQw...R7X9') : 
+                  '••••••••••••••••••••••••••••••••'
+                }
               </span>
             </div>
             <button

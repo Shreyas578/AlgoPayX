@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { Wallet, Mail, LayoutDashboard, Zap, Shield, TrendingUp } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { useAlgorand } from '../context/AlgorandContext';
 import { AuthModal } from './AuthModal';
+import { WalletConnectModal } from './WalletConnectModal';
 
 interface HomeProps {
   onNavigate: (page: string) => void;
@@ -9,6 +11,7 @@ interface HomeProps {
 
 export function Home({ onNavigate }: HomeProps) {
   const { setUser, showToast } = useApp();
+  const { isConnected, activeAccount } = useAlgorand();
   const [authModal, setAuthModal] = useState<{
     isOpen: boolean;
     mode: 'signin' | 'signup';
@@ -16,16 +19,23 @@ export function Home({ onNavigate }: HomeProps) {
     isOpen: false,
     mode: 'signin'
   });
+  const [walletModal, setWalletModal] = useState(false);
 
   const handleConnectWallet = () => {
-    setUser({
-      connected: true,
-      walletAddress: 'ALGO7XY3...KJ8P2Q',
-      premium: false,
-      hasPassword: false
-    });
-    showToast('Wallet connected successfully!', 'success');
-    setTimeout(() => onNavigate('dashboard'), 1500);
+    setWalletModal(true);
+  };
+
+  const handleWalletConnectSuccess = () => {
+    if (activeAccount) {
+      setUser({
+        connected: true,
+        walletAddress: activeAccount.address,
+        premium: false,
+        hasPassword: false
+      });
+      showToast('Wallet connected successfully!', 'success');
+      setTimeout(() => onNavigate('dashboard'), 1500);
+    }
   };
 
   const openAuthModal = (mode: 'signin' | 'signup') => {
@@ -73,10 +83,11 @@ export function Home({ onNavigate }: HomeProps) {
         <div className="max-w-md mx-auto space-y-4 mb-16">
           <button
             onClick={handleConnectWallet}
+            disabled={isConnected}
             className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white py-4 px-6 rounded-xl font-semibold transition-all duration-200 flex items-center justify-center space-x-3 transform hover:scale-105 shadow-lg hover:shadow-blue-500/25"
           >
             <Wallet className="w-5 h-5" />
-            <span>Connect Wallet</span>
+            <span>{isConnected ? 'Wallet Connected' : 'Connect Wallet'}</span>
           </button>
           
           <button
@@ -144,6 +155,12 @@ export function Home({ onNavigate }: HomeProps) {
         onClose={closeAuthModal}
         mode={authModal.mode}
         onSuccess={handleAuthSuccess}
+      />
+      
+      <WalletConnectModal
+        isOpen={walletModal}
+        onClose={() => setWalletModal(false)}
+        onSuccess={handleWalletConnectSuccess}
       />
     </div>
   );

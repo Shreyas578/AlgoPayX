@@ -12,6 +12,7 @@ import { History } from './components/History';
 import { Toast } from './components/Toast';
 import { LoadingScreen } from './components/LoadingScreen';
 import { AppProvider } from './context/AppContext';
+import { AlgorandProvider } from './context/AlgorandContext';
 
 function App() {
   const [currentPage, setCurrentPage] = useState('home');
@@ -50,16 +51,18 @@ function App() {
 
   return (
     <AppProvider>
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-gray-900 font-inter">
-        {isLoading ? (
-          <LoadingScreen onComplete={handleLoadingComplete} />
-        ) : (
-          <>
-            {renderPage()}
-            <Toast />
-          </>
-        )}
-      </div>
+      <AlgorandProvider>
+        <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-gray-900 font-inter">
+          {isLoading ? (
+            <LoadingScreen onComplete={handleLoadingComplete} />
+          ) : (
+            <>
+              {renderPage()}
+              <Toast />
+            </>
+          )}
+        </div>
+      </AlgorandProvider>
     </AppProvider>
   );
 }

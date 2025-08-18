@@ -11,6 +11,7 @@ import {
   Crown
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { useAlgorand } from '../context/AlgorandContext';
 import { Navigation } from './Navigation';
 import { PinModal } from './PinModal';
 
@@ -20,6 +21,7 @@ interface PaymentsProps {
 
 export function Payments({ onNavigate }: PaymentsProps) {
   const { balance, showToast, user, addTransaction, updateBalance } = useApp();
+  const { isConnected, activeAccount, sendPayment, sendAsset, balance: algoBalance } = useAlgorand();
   const [selectedMethod, setSelectedMethod] = useState('bank');
   const [amount, setAmount] = useState('');
   const [recipient, setRecipient] = useState('');
@@ -35,7 +37,7 @@ export function Payments({ onNavigate }: PaymentsProps) {
 
   const paymentSources = [
     { id: 'bank', label: 'Bank Balance', balance: balance.bank },
-    { id: 'algo', label: 'ALGO', balance: balance.algo },
+    { id: 'algo', label: 'ALGO', balance: isConnected ? algoBalance : balance.algo },
     { id: 'usdc', label: 'USDC', balance: balance.usdc },
   ];
 
@@ -86,40 +88,94 @@ export function Payments({ onNavigate }: PaymentsProps) {
 
   const handlePinSuccess = () => {
     if (pendingPayment) {
-      // Update balance
-      const totalAmount = pendingPayment.amount + pendingPayment.fee;
-      updateBalance('debit', totalAmount, pendingPayment.source as 'bank' | 'algo' | 'usdc' | 'stocks');
+      // Handle Algorand payments if connected
+      if (isConnected && activeAccount && pendingPayment.source === 'algo') {
+        handleAlgorandPayment();
+      } else {
+        // Handle traditional payments
+        handleTraditionalPayment();
+      }
+    }
+  };
 
+  const handleAlgorandPayment = async () => {
+    if (!pendingPayment || !activeAccount) return;
+    
+    try {
+      const txId = await sendPayment(
+        pendingPayment.recipient,
+        pendingPayment.amount,
+        `Payment via ${pendingPayment.method.toUpperCase()}`
+      );
+      
       // Add transaction to history
       addTransaction({
         type: 'payment',
         status: 'completed',
         amount: pendingPayment.amount,
-        currency: 'USD',
-        description: `Payment via ${pendingPayment.method.toUpperCase()}`,
+        currency: 'ALGO',
+        description: `Algorand Payment via ${pendingPayment.method.toUpperCase()}`,
         recipient: pendingPayment.recipient,
         fee: pendingPayment.fee,
         details: {
           method: pendingPayment.method,
-          source: pendingPayment.source
+          source: pendingPayment.source,
+          txId: txId,
+          blockchain: 'Algorand'
         }
       });
 
-      showToast(`Payment of $${pendingPayment.amount} sent successfully to ${pendingPayment.recipient}!`, 'success');
+      showToast(`Payment of ${pendingPayment.amount} ALGO sent successfully!`, 'success');
       
-      // Send transaction confirmation message
       setTimeout(() => {
-        const feeMessage = pendingPayment.fee > 0 ? ` Fee: $${pendingPayment.fee.toFixed(2)}.` : ' No fees applied (Premium member).';
-        showToast(
-          `Payment completed! $${pendingPayment.amount} sent to ${pendingPayment.recipient} via ${pendingPayment.method.toUpperCase()}.${feeMessage}`,
-          'success'
-        );
+        showToast(`Transaction confirmed on Algorand blockchain. TX ID: ${txId.slice(0, 8)}...`, 'success');
       }, 2000);
       
+    } catch (error: any) {
+      showToast(error.message || 'Payment failed', 'error');
+    } finally {
       setAmount('');
       setRecipient('');
       setPendingPayment(null);
     }
+  };
+
+  const handleTraditionalPayment = () => {
+    if (!pendingPayment) return;
+    
+    // Update balance
+    const totalAmount = pendingPayment.amount + pendingPayment.fee;
+    updateBalance('debit', totalAmount, pendingPayment.source as 'bank' | 'algo' | 'usdc' | 'stocks');
+
+    // Add transaction to history
+    addTransaction({
+      type: 'payment',
+      status: 'completed',
+      amount: pendingPayment.amount,
+      currency: 'USD',
+      description: `Payment via ${pendingPayment.method.toUpperCase()}`,
+      recipient: pendingPayment.recipient,
+      fee: pendingPayment.fee,
+      details: {
+        method: pendingPayment.method,
+        source: pendingPayment.source
+      }
+    });
+
+    showToast(`Payment of $${pendingPayment.amount} sent successfully to ${pendingPayment.recipient}!`, 'success');
+    
+    // Send transaction confirmation message
+    setTimeout(() => {
+      const feeMessage = pendingPayment.fee > 0 ? ` Fee: $${pendingPayment.fee.toFixed(2)}.` : ' No fees applied (Premium member).';
+      showToast(
+        `Payment completed! $${pendingPayment.amount} sent to ${pendingPayment.recipient} via ${pendingPayment.method.toUpperCase()}.${feeMessage}`,
+        'success'
+      );
+    }, 2000);
+    
+    setAmount('');
+    setRecipient('');
+    setPendingPayment(null);
   };
 
   // Get recent transactions from context

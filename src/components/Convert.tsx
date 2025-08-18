@@ -9,6 +9,7 @@ import {
   Crown
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { useAlgorand } from '../context/AlgorandContext';
 import { Navigation } from './Navigation';
 import { PinModal } from './PinModal';
 
@@ -18,6 +19,7 @@ interface ConvertProps {
 
 export function Convert({ onNavigate }: ConvertProps) {
   const { balance, showToast, user, addTransaction, updateBalance } = useApp();
+  const { isConnected, activeAccount, swap, balance: algoBalance } = useAlgorand();
   const [fromCurrency, setFromCurrency] = useState('USD');
   const [toCurrency, setToCurrency] = useState('ALGO');
   const [amount, setAmount] = useState('');
@@ -122,43 +124,103 @@ export function Convert({ onNavigate }: ConvertProps) {
 
   const handlePinSuccess = () => {
     if (pendingConversion) {
-      // Update balance - deduct from bank balance
-      const totalAmount = pendingConversion.amount + pendingConversion.fee;
-      updateBalance('debit', totalAmount, 'bank');
+      // Handle Algorand swaps if connected and dealing with crypto
+      if (isConnected && activeAccount && (pendingConversion.from === 'ALGO' || pendingConversion.to === 'ALGO')) {
+        handleAlgorandSwap();
+      } else {
+        // Handle traditional conversions
+        handleTraditionalConversion();
+      }
+    }
+  };
 
+  const handleAlgorandSwap = async () => {
+    if (!pendingConversion || !activeAccount) return;
+    
+    try {
+      // Map currencies to asset IDs (simplified)
+      const assetMap: { [key: string]: number } = {
+        'ALGO': 0,
+        'USDC': 31566704, // Mainnet USDC asset ID
+        'USD': 31566704   // Treat USD as USDC for swaps
+      };
+      
+      const fromAssetId = assetMap[pendingConversion.from] || 0;
+      const toAssetId = assetMap[pendingConversion.to] || 0;
+      
+      const txId = await swap(fromAssetId, toAssetId, pendingConversion.amount);
+      
       // Add transaction to history
       addTransaction({
         type: 'convert',
         status: 'completed',
         amount: pendingConversion.amount,
         currency: pendingConversion.from,
-        description: `${pendingConversion.from} to ${pendingConversion.to} Conversion`,
+        description: `Algorand Swap: ${pendingConversion.from} to ${pendingConversion.to}`,
         fee: pendingConversion.fee,
         details: {
           fromCurrency: pendingConversion.from,
           toCurrency: pendingConversion.to,
-          convertedAmount: pendingConversion.converted
+          convertedAmount: pendingConversion.converted,
+          txId: txId,
+          blockchain: 'Algorand'
         }
       });
 
-      showToast(
-        `Successfully converted ${pendingConversion.amount} ${pendingConversion.from} to ${pendingConversion.converted} ${pendingConversion.to}`, 
-        'success'
-      );
+      showToast(`Successfully swapped ${pendingConversion.amount} ${pendingConversion.from} to ${pendingConversion.converted} ${pendingConversion.to}!`, 'success');
       
-      // Send transaction confirmation message
       setTimeout(() => {
-        const feeMessage = pendingConversion.fee > 0 ? ` Fee: $${pendingConversion.fee.toFixed(2)}.` : ' No fees applied (Premium member).';
-        showToast(
-          `Transaction completed! You received ${pendingConversion.converted} ${pendingConversion.to}.${feeMessage}`,
-          'success'
-        );
+        showToast(`Swap confirmed on Algorand blockchain. TX ID: ${txId.slice(0, 8)}...`, 'success');
       }, 2000);
       
+    } catch (error: any) {
+      showToast(error.message || 'Swap failed', 'error');
+    } finally {
       setAmount('');
       setConvertedAmount('0');
       setPendingConversion(null);
     }
+  };
+
+  const handleTraditionalConversion = () => {
+    if (!pendingConversion) return;
+    
+    // Update balance - deduct from bank balance
+    const totalAmount = pendingConversion.amount + pendingConversion.fee;
+    updateBalance('debit', totalAmount, 'bank');
+
+    // Add transaction to history
+    addTransaction({
+      type: 'convert',
+      status: 'completed',
+      amount: pendingConversion.amount,
+      currency: pendingConversion.from,
+      description: `${pendingConversion.from} to ${pendingConversion.to} Conversion`,
+      fee: pendingConversion.fee,
+      details: {
+        fromCurrency: pendingConversion.from,
+        toCurrency: pendingConversion.to,
+        convertedAmount: pendingConversion.converted
+      }
+    });
+
+    showToast(
+      `Successfully converted ${pendingConversion.amount} ${pendingConversion.from} to ${pendingConversion.converted} ${pendingConversion.to}`, 
+      'success'
+    );
+    
+    // Send transaction confirmation message
+    setTimeout(() => {
+      const feeMessage = pendingConversion.fee > 0 ? ` Fee: $${pendingConversion.fee.toFixed(2)}.` : ' No fees applied (Premium member).';
+      showToast(
+        `Transaction completed! You received ${pendingConversion.converted} ${pendingConversion.to}.${feeMessage}`,
+        'success'
+      );
+    }, 2000);
+    
+    setAmount('');
+    setConvertedAmount('0');
+    setPendingConversion(null);
   };
 
   // Get recent conversion transactions from context
