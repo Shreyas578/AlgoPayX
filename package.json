@@ -13,6 +13,7 @@
     "@algorandfoundation/algokit-utils": "^9.1.2",
     "@perawallet/connect": "^1.4.2",
     "@randlabs/myalgo-connect": "^1.4.2",
+    "@walletconnect/client": "^1.8.0",
     "@walletconnect/core": "^2.21.8",
     "@walletconnect/types": "^2.21.8",
     "@walletconnect/utils": "^2.21.8",

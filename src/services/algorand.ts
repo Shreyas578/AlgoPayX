@@ -1,6 +1,8 @@
 import algosdk from 'algosdk';
 import { PeraWalletConnect } from '@perawallet/connect';
 import MyAlgoConnect from '@randlabs/myalgo-connect';
+import { WalletConnect } from '@walletconnect/client';
+import { formatJsonRpcRequest } from '@walletconnect/utils';
 
 // Algorand network configuration
 const ALGORAND_NETWORK = 'testnet'; // Change to 'mainnet' for production
@@ -27,12 +29,54 @@ export const peraWallet = new PeraWalletConnect({
 
 export const myAlgoWallet = new MyAlgoConnect();
 
+// WalletConnect instance
+let walletConnectInstance: WalletConnect | null = null;
+
+// Web3 wallet detection
+const detectWeb3Wallets = () => {
+  const wallets = {
+    metamask: !!(window as any).ethereum?.isMetaMask,
+    coinbase: !!(window as any).ethereum?.isCoinbaseWallet,
+    rainbow: !!(window as any).ethereum?.isRainbow,
+    trust: !!(window as any).ethereum?.isTrust,
+    phantom: !!(window as any).solana?.isPhantom
+  };
+  return wallets;
+};
+
+// Initialize WalletConnect
+const initWalletConnect = () => {
+  if (!walletConnectInstance) {
+    walletConnectInstance = new WalletConnect({
+      bridge: 'https://bridge.walletconnect.org',
+      qrcodeModal: {
+        open: (uri: string, cb: any) => {
+          console.log('WalletConnect URI:', uri);
+          // You can implement a custom QR code modal here
+          cb();
+        },
+        close: () => {
+          console.log('WalletConnect modal closed');
+        }
+      }
+    });
+  }
+  return walletConnectInstance;
+};
+
 // Wallet types
 export enum WalletType {
   PERA = 'pera',
   MYALGO = 'myalgo',
   DEFLY = 'defly',
-  EXODUS = 'exodus'
+  EXODUS = 'exodus',
+  RAINBOW = 'rainbow',
+  COINBASE = 'coinbase',
+  METAMASK = 'metamask',
+  WALLETCONNECT = 'walletconnect',
+  TRUST = 'trust',
+  PHANTOM = 'phantom',
+  LEDGER = 'ledger'
 }
 
 export interface AlgorandAccount {
@@ -66,6 +110,92 @@ export const connectWallet = async (walletType: WalletType): Promise<AlgorandAcc
           name: account.name
         }));
       
+      case WalletType.WALLETCONNECT:
+        const connector = initWalletConnect();
+        if (!connector.connected) {
+          await connector.createSession();
+        }
+        
+        return new Promise((resolve, reject) => {
+          connector.on('connect', (error, payload) => {
+            if (error) {
+              reject(error);
+              return;
+            }
+            
+            const { accounts } = payload.params[0];
+            resolve(accounts.map((address: string) => ({ address })));
+          });
+        });
+      
+      case WalletType.METAMASK:
+        if (!(window as any).ethereum?.isMetaMask) {
+          throw new Error('MetaMask not detected. Please install MetaMask extension.');
+        }
+        
+        const metamaskAccounts = await (window as any).ethereum.request({
+          method: 'eth_requestAccounts'
+        });
+        
+        // Convert Ethereum addresses to Algorand format (this is a simplified example)
+        return metamaskAccounts.map((address: string) => ({
+          address: address, // In production, you'd convert this to Algorand format
+          name: 'MetaMask Account'
+        }));
+      
+      case WalletType.COINBASE:
+        if (!(window as any).ethereum?.isCoinbaseWallet) {
+          throw new Error('Coinbase Wallet not detected. Please install Coinbase Wallet extension.');
+        }
+        
+        const coinbaseAccounts = await (window as any).ethereum.request({
+          method: 'eth_requestAccounts'
+        });
+        
+        return coinbaseAccounts.map((address: string) => ({
+          address: address,
+          name: 'Coinbase Wallet'
+        }));
+      
+      case WalletType.RAINBOW:
+        if (!(window as any).ethereum?.isRainbow) {
+          throw new Error('Rainbow Wallet not detected. Please install Rainbow Wallet extension.');
+        }
+        
+        const rainbowAccounts = await (window as any).ethereum.request({
+          method: 'eth_requestAccounts'
+        });
+        
+        return rainbowAccounts.map((address: string) => ({
+          address: address,
+          name: 'Rainbow Wallet'
+        }));
+      
+      case WalletType.TRUST:
+        if (!(window as any).ethereum?.isTrust) {
+          throw new Error('Trust Wallet not detected. Please install Trust Wallet extension.');
+        }
+        
+        const trustAccounts = await (window as any).ethereum.request({
+          method: 'eth_requestAccounts'
+        });
+        
+        return trustAccounts.map((address: string) => ({
+          address: address,
+          name: 'Trust Wallet'
+        }));
+      
+      case WalletType.PHANTOM:
+        if (!(window as any).solana?.isPhantom) {
+          throw new Error('Phantom Wallet not detected. Please install Phantom Wallet extension.');
+        }
+        
+        const phantomResponse = await (window as any).solana.connect();
+        return [{
+          address: phantomResponse.publicKey.toString(),
+          name: 'Phantom Wallet'
+        }];
+      
       default:
         throw new Error(`Wallet type ${walletType} not supported`);
     }
@@ -84,6 +214,25 @@ export const disconnectWallet = async (walletType: WalletType): Promise<void> =>
       
       case WalletType.MYALGO:
         // MyAlgo doesn't have a disconnect method
+        break;
+      
+      case WalletType.WALLETCONNECT:
+        if (walletConnectInstance && walletConnectInstance.connected) {
+          await walletConnectInstance.killSession();
+        }
+        break;
+      
+      case WalletType.METAMASK:
+      case WalletType.COINBASE:
+      case WalletType.RAINBOW:
+      case WalletType.TRUST:
+        // These wallets don't require explicit disconnection
+        break;
+      
+      case WalletType.PHANTOM:
+        if ((window as any).solana?.isPhantom) {
+          await (window as any).solana.disconnect();
+        }
         break;
       
       default:
@@ -172,6 +321,31 @@ export const sendAlgoTransaction = async (
         signedTxn = myAlgoSignedTxn.blob;
         break;
       
+      case WalletType.WALLETCONNECT:
+        if (!walletConnectInstance || !walletConnectInstance.connected) {
+          throw new Error('WalletConnect not connected');
+        }
+        
+        const request = formatJsonRpcRequest('algo_signTxn', [
+          {
+            txn: Buffer.from(algosdk.encodeUnsignedTransaction(txn)).toString('base64')
+          }
+        ]);
+        
+        const result = await walletConnectInstance.sendCustomRequest(request);
+        signedTxn = new Uint8Array(Buffer.from(result[0], 'base64'));
+        break;
+      
+      case WalletType.METAMASK:
+      case WalletType.COINBASE:
+      case WalletType.RAINBOW:
+      case WalletType.TRUST:
+        // For Web3 wallets, we need to use a bridge service to convert to Algorand
+        // This is a simplified implementation - in production, you'd use a proper bridge
+        const web3SignedTxn = await signWithWeb3Wallet(txn, walletType);
+        signedTxn = web3SignedTxn;
+        break;
+      
       default:
         throw new Error(`Wallet type ${walletType} not supported for signing`);
     }
@@ -186,6 +360,44 @@ export const sendAlgoTransaction = async (
     console.error('Error sending transaction:', error);
     throw error;
   }
+};
+
+// Web3 wallet signing bridge (simplified implementation)
+const signWithWeb3Wallet = async (txn: any, walletType: WalletType): Promise<Uint8Array> => {
+  // This is a simplified bridge implementation
+  // In production, you would use a proper Web3-to-Algorand bridge service
+  
+  const txnBytes = algosdk.encodeUnsignedTransaction(txn);
+  const txnB64 = Buffer.from(txnBytes).toString('base64');
+  
+  let ethereum;
+  switch (walletType) {
+    case WalletType.METAMASK:
+      ethereum = (window as any).ethereum;
+      break;
+    case WalletType.COINBASE:
+      ethereum = (window as any).ethereum;
+      break;
+    case WalletType.RAINBOW:
+      ethereum = (window as any).ethereum;
+      break;
+    case WalletType.TRUST:
+      ethereum = (window as any).ethereum;
+      break;
+    default:
+      throw new Error('Unsupported Web3 wallet');
+  }
+  
+  // Sign the transaction hash with the Web3 wallet
+  const accounts = await ethereum.request({ method: 'eth_accounts' });
+  const signature = await ethereum.request({
+    method: 'personal_sign',
+    params: [txnB64, accounts[0]]
+  });
+  
+  // Convert Web3 signature to Algorand format (simplified)
+  // In production, this would involve proper cryptographic conversion
+  return new Uint8Array(Buffer.from(signature.slice(2), 'hex'));
 };
 
 export const sendAssetTransaction = async (
@@ -408,3 +620,6 @@ export const swapAssets = async (
     throw error;
   }
 };
+
+// Export wallet detection utility
+export { detectWeb3Wallets };
